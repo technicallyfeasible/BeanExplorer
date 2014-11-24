@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/2010/manifest" xmlns:m2="http://schemas.microsoft.com/appx/2013/manifest">
+  <Identity Name="966f8b2f-090c-4639-8877-630e46730e66" Publisher="CN=Creator" Version="0.1.0.0" />
+  <Properties>
+    <DisplayName>BeanExplorer</DisplayName>
+    <PublisherDisplayName>Jens Elstner</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Prerequisites>
+    <OSMinVersion>6.3.0</OSMinVersion>
+    <OSMaxVersionTested>6.3.0</OSMaxVersionTested>
+  </Prerequisites>
+  <Resources>
+    <Resource Language="x-generate" />
+  </Resources>
+  <Applications>
+    <Application Id="App" Executable="$targetnametoken$.exe" EntryPoint="BeanExplorer.Windows.App">
+      <m2:VisualElements DisplayName="Bean Explorer" Square150x150Logo="Assets\Logo.png" Square30x30Logo="Assets\SmallLogo.png" Description="Allows you to communicate with your PunchThrough Bean devices." ForegroundText="light" BackgroundColor="#464646">
+        <m2:SplashScreen Image="Assets\SplashScreen.png" />
+      </m2:VisualElements>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <m2:DeviceCapability Name="bluetooth.genericAttributeProfile">
+      <m2:Device Id="any">
+        <m2:Function Type="serviceId:a495ff10-c5b1-4b44-b512-1370f02d74de" />
+        <m2:Function Type="serviceId:a495ff11-c5b1-4b44-b512-1370f02d74de" />
+      </m2:Device>
+    </m2:DeviceCapability>
+  </Capabilities>
+</Package>
