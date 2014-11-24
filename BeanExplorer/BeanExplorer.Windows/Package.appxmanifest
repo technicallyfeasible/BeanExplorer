@@ -2,7 +2,7 @@
 <Package xmlns="http://schemas.microsoft.com/appx/2010/manifest" xmlns:m2="http://schemas.microsoft.com/appx/2013/manifest">
   <Identity Name="966f8b2f-090c-4639-8877-630e46730e66" Publisher="CN=Creator" Version="0.1.0.0" />
   <Properties>
-    <DisplayName>BeanExplorer</DisplayName>
+    <DisplayName>Bean Explorer</DisplayName>
     <PublisherDisplayName>Jens Elstner</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
