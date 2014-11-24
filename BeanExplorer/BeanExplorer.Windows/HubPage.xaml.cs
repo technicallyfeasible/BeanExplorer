@@ -98,9 +98,9 @@ namespace BeanExplorer
 				DefaultViewModel.DeviceSelected((Device)e.AddedItems[0]);
 	    }
 
-	    private void TestClick(object sender, RoutedEventArgs e)
+	    private void SendClick(object sender, RoutedEventArgs e)
 	    {
-		    DefaultViewModel.Test();
+		    DefaultViewModel.Send();
 	    }
     }
 }

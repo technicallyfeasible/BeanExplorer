@@ -38,7 +38,7 @@
                 <EntranceThemeTransition/>
             </TransitionCollection>
         </Grid.ChildrenTransitions>
-        <Hub SectionHeaderClick="Hub_SectionHeaderClick" DataContext="{Binding}">
+        <Hub SectionHeaderClick="Hub_SectionHeaderClick" DataContext="{Binding}" Margin="10,0,-10,0">
             <Hub.Header>
                 <!-- Back button and page title -->
                 <Grid>
@@ -57,7 +57,7 @@
                         VerticalAlignment="Top" IsHitTestVisible="false" TextWrapping="NoWrap" />
                 </Grid>
             </Hub.Header>
-            <HubSection Width="780" Margin="0,0,80,0" Header="Devices" DataContext="{Binding}">
+            <HubSection Width="780" VerticalContentAlignment="Stretch" Margin="0,0,80,0" Header="Devices" DataContext="{Binding}">
                 <HubSection.Background>
                     <ImageBrush ImageSource="Assets/MediumGray.png" Stretch="UniformToFill" />
                 </HubSection.Background>
@@ -68,26 +68,37 @@
 							<RowDefinition Height="Auto" />
 							<RowDefinition Height="*" />
 						</Grid.RowDefinitions>
-						<ListBox ItemsSource="{Binding Devices}" MinHeight="50" SelectionMode="Single" SelectionChanged="DeviceSelected" Grid.Row="0">
-							<ListBox.ItemTemplate>
+						<ComboBox ItemsSource="{Binding Devices}" SelectionChanged="DeviceSelected" Grid.Row="0">
+							<ComboBox.ItemTemplate>
 								<DataTemplate>
 									<TextBlock Text="{Binding Name}"/>
 								</DataTemplate>
-							</ListBox.ItemTemplate>
-						</ListBox>
+							</ComboBox.ItemTemplate>
+						</ComboBox>
 						<TextBlock Text="Log" FontSize="{StaticResource HubSectionHeaderThemeFontSize}" FontWeight="{StaticResource HubSectionHeaderThemeFontWeight}" Grid.Row="1"/>
-						<ListBox ItemsSource="{Binding Status}" VerticalAlignment="Bottom" VerticalContentAlignment="Stretch" MinHeight="50" Grid.Row="2">
+						<ListBox ItemsSource="{Binding Status}" SelectionMode="Single" VerticalAlignment="Stretch" VerticalContentAlignment="Stretch" MinHeight="50" Grid.Row="2">
 						</ListBox>
 					</Grid>
 				</DataTemplate>
             </HubSection>
-            <HubSection Width="500" x:Uid="Section1Header" Header="Properties" DataContext="CurrentDevice">
+			<HubSection Width="500" x:Uid="Section1Header" Header="Properties" HorizontalContentAlignment="Stretch" DataContext="{Binding CurrentDevice}">
                 <DataTemplate>
-					<StackPanel Orientation="Vertical">
-						<TextBlock Text="Id" />
-						<TextBlock Text="{Binding Id}"/>
-						<Button Click="TestClick">Test</Button>
-					</StackPanel>
+					<Grid>
+						<Grid.RowDefinitions>
+							<RowDefinition Height="Auto"/>
+							<RowDefinition Height="Auto"/>
+						</Grid.RowDefinitions>
+						<!--<TextBlock Text="Id" />
+						<TextBlock Text="{Binding Id}"/>-->
+						<Grid Grid.Row="0">
+							<Grid.ColumnDefinitions>
+								<ColumnDefinition Width="*"/>
+								<ColumnDefinition Width="Auto"/>
+							</Grid.ColumnDefinitions>
+							<TextBox Text="{Binding SerialMessage, Mode=TwoWay}" Grid.Column="0"/>
+							<Button Click="SendClick" Grid.Column="1">Send</Button>
+						</Grid>
+					</Grid>
                 </DataTemplate>
             </HubSection>
         </Hub>

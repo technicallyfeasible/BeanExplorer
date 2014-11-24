@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using Windows.Devices.Enumeration;
+using Windows.Devices.Enumeration.Pnp;
 using Windows.Storage.Streams;
 
 namespace BeanExplorer.Connector
@@ -30,6 +31,8 @@ namespace BeanExplorer.Connector
 	/// </summary>
 	public class Bean
 	{
+		private PnpObjectWatcher watcher;
+		private String currentDeviceId;
 		private GattCharacteristic currentCharacteristic;
 		private Byte[][] packets;
 		private Int32 msgCounter;
@@ -98,39 +101,89 @@ namespace BeanExplorer.Connector
 			return results;
 		}
 
+		/// <summary>
+		/// Register to be notified when a connection is established to the Bluetooth device
+		/// </summary>
+		private void StartDeviceConnectionWatcher()
+		{
+			watcher = PnpObject.CreateWatcher(PnpObjectType.DeviceContainer, new string[] { "System.Devices.Connected" }, String.Empty);
+			watcher.Updated += DeviceConnectionUpdated;
+			watcher.Start();
+		}
+
+		/// <summary>
+		/// Invoked when a connection is established to the Bluetooth device
+		/// </summary>
+		/// <param name="sender">The watcher object that sent the notification</param>
+		/// <param name="args">The updated device object properties</param>
+		private async void DeviceConnectionUpdated(PnpObjectWatcher sender, PnpObjectUpdate args)
+		{
+			if (currentDeviceId != args.Id)
+				return;
+
+			var connectedProperty = args.Properties["System.Devices.Connected"];
+			OnProgress(new ProgressEventArgs("Connection state changed to " + connectedProperty, 0, 0));
+
+			bool isConnected;
+			if (Boolean.TryParse(connectedProperty.ToString(), out isConnected) && isConnected)
+			{
+				var status = await currentCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
+				if (status == GattCommunicationStatus.Success)
+				{
+					//IsServiceInitialized = true;
+					// Once the Client Characteristic Configuration Descriptor is set, the watcher is no longer required
+					watcher.Stop();
+					watcher = null;
+				}
+			}
+		}
+
+
 		public async void Subscribe(String deviceId)
 		{
 			Unsubscribe();
 
-			GattDeviceService service = await GattDeviceService.FromIdAsync(deviceId);
-			if (service == null)
+			try
 			{
-				OnProgress(new ProgressEventArgs("Serial service not found", 0, 0));
-				return;
-			}
-			IReadOnlyList<GattCharacteristic> chars = service.GetCharacteristics(BeanConstants.BeanSerialCharUuid);
-			// check characteristic, windows cuts off everything after the \0 so we allow "B" as well
-			if (chars.Count == 0 || (chars[0].UserDescription != "B\0e\0a\0n\0 \0T\0r\0a\0n\0s\0p\0o\0r\0t" && chars[0].UserDescription != "B"))
-			{
-				OnProgress(new ProgressEventArgs("Serial characteristic not found", 0, 0));
-				return;
-			}
-			GattCharacteristic c = chars[0];
+				OnProgress(new ProgressEventArgs("Subscribing to " + deviceId, 0, 0));
+				GattDeviceService service = await GattDeviceService.FromIdAsync(deviceId);
+				if (service == null)
+				{
+					OnProgress(new ProgressEventArgs("Serial service not found", 0, 0));
+					return;
+				}
+				IReadOnlyList<GattCharacteristic> chars = service.GetCharacteristics(BeanConstants.BeanSerialCharUuid);
+				// check characteristic, windows cuts off everything after the \0 so we allow "B" as well
+				if (chars.Count == 0 || (chars[0].UserDescription != "B\0e\0a\0n\0 \0T\0r\0a\0n\0s\0p\0o\0r\0t" && chars[0].UserDescription != "B"))
+				{
+					OnProgress(new ProgressEventArgs("Serial characteristic not found", 0, 0));
+					return;
+				}
+				GattCharacteristic c = chars[0];
 
-			Boolean canNotify = c.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Notify);
-			if (!canNotify)
-			{
-				OnProgress(new ProgressEventArgs("Device does not support notifications", 0, 0));
-				return;
-			}
+				Boolean canNotify = c.CharacteristicProperties.HasFlag(GattCharacteristicProperties.Notify);
+				if (!canNotify)
+				{
+					OnProgress(new ProgressEventArgs("Device does not support notifications", 0, 0));
+					return;
+				}
 
-			c.ValueChanged += OnValueChanged;
-			GattCommunicationStatus status = await c.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
-			if (status != GattCommunicationStatus.Success)
-			{
-				OnProgress(new ProgressEventArgs("Error: " + status, 0, 0));
+				currentDeviceId = deviceId;
+				c.ValueChanged += OnValueChanged;
+				GattCommunicationStatus status = await c.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
+				if (status == GattCommunicationStatus.Unreachable)
+				{
+					// Register a PnpObjectWatcher to detect when a connection to the device is established,
+					// such that the application can retry device configuration.
+					StartDeviceConnectionWatcher();
+				}
+				currentCharacteristic = c;
+				OnProgress(new ProgressEventArgs("Subscribed successfully", 0, 0));
 			}
-			currentCharacteristic = c;
+			catch (Exception)
+			{
+				OnProgress(new ProgressEventArgs("Subscribe failed", 0, 0));
+			}
 		}
 
 
@@ -140,7 +193,6 @@ namespace BeanExplorer.Connector
 				return;
 
 			currentCharacteristic.ValueChanged -= OnValueChanged;
-
 			currentCharacteristic = null;
 		}
 
@@ -149,8 +201,8 @@ namespace BeanExplorer.Connector
 			var data = new byte[args.CharacteristicValue.Length];
 			DataReader.FromBuffer(args.CharacteristicValue).ReadBytes(data);
 			
-			String debugString = Encoding.UTF8.GetString(data, 0, data.Length);
-			OnProgress(new ProgressEventArgs(debugString, 0, 0));
+			//String debugString = Encoding.UTF8.GetString(data, 0, data.Length);
+			//OnProgress(new ProgressEventArgs(debugString, 0, 0));
 
 			// Received a single GT packet
 			var start = ((data[0] & 0x80) != 0);	//Set to 1 for the first packet of each App Message, 0 for every other packet
@@ -202,46 +254,55 @@ namespace BeanExplorer.Connector
 		/// </summary>
 		public async void Send(BeanMsgId msgId, Byte[] data)
 		{
-			Int32 flag = 0x80;
-
-			// build message
-			DataWriter msg = new DataWriter();
-			msg.ByteOrder = ByteOrder.LittleEndian;
-			msg.WriteByte((Byte) (data.Length + 2));
-			msg.WriteByte(0);
-			msg.WriteUInt16((UInt16) msgId);
-			msg.WriteBytes(data);
-			IBuffer b = msg.DetachBuffer();
-			UInt16 crc = Crc16.ComputeChecksum(b, 0, (Int32) b.Length);
-			msg.WriteBuffer(b);
-			msg.WriteUInt16(crc);
-			b = msg.DetachBuffer();
-			
-			Byte[] debug = new Byte[b.Length];
-			b.CopyTo(debug);
-
-			Int32 packages = (Int32) Math.Ceiling((Double) b.Length / 19) - 1;
-
-			// loop until everything has been sent
-			DataWriter writer = new DataWriter();
-			writer.ByteOrder = ByteOrder.LittleEndian;
-			UInt32 offset = 0;
-			do
+			try
 			{
-				UInt32 size = Math.Min(19, b.Length - offset);
-				Byte header = (Byte) (flag | ((this.msgCounter & 0x03) << 5) | (packages & 0x1F));
-				writer.WriteByte(header);
-				writer.WriteBuffer(b, offset, size);
-				IBuffer package = writer.DetachBuffer();
-				debug = new Byte[package.Length];
-				package.CopyTo(debug);
-				GattCommunicationStatus result = await this.currentCharacteristic.WriteValueAsync(package, GattWriteOption.WriteWithoutResponse);
-				flag = 0;
-				packages--;
-				this.msgCounter++;
-				this.msgCounter &= 0x03;
-				offset += size;
-			} while (offset < b.Length);
+				Int32 flag = 0x80;
+
+				// build message
+				DataWriter msg = new DataWriter();
+				msg.ByteOrder = ByteOrder.LittleEndian;
+				msg.WriteByte((Byte) (data.Length + 2));
+				msg.WriteByte(0);
+				msg.WriteUInt16((UInt16) msgId);
+				msg.WriteBytes(data);
+				IBuffer b = msg.DetachBuffer();
+				UInt16 crc = Crc16.ComputeChecksum(b, 0, (Int32) b.Length);
+				msg.WriteBuffer(b);
+				msg.WriteUInt16(crc);
+				b = msg.DetachBuffer();
+
+				Byte[] debug = new Byte[b.Length];
+				b.CopyTo(debug);
+
+				Int32 packages = (Int32) Math.Ceiling((Double) b.Length/18) - 1;
+
+				// loop until everything has been sent
+				DataWriter writer = new DataWriter();
+				writer.ByteOrder = ByteOrder.LittleEndian;
+				UInt32 offset = 0;
+				do
+				{
+					UInt32 size = Math.Min(18, b.Length - offset);
+					Byte header = (Byte) (flag | ((this.msgCounter & 0x03) << 5) | (packages & 0x1F));
+					writer.WriteByte(header);
+					writer.WriteBuffer(b, offset, size);
+					IBuffer package = writer.DetachBuffer();
+					debug = new Byte[package.Length];
+					package.CopyTo(debug);
+					GattCommunicationStatus result = await this.currentCharacteristic.WriteValueAsync(package, GattWriteOption.WriteWithoutResponse);
+					if (result != GattCommunicationStatus.Success)
+						throw new Exception(result.ToString());
+					flag = 0;
+					packages--;
+					this.msgCounter++;
+					this.msgCounter &= 0x03;
+					offset += size;
+				} while (offset < b.Length);
+			}
+			catch (Exception ex)
+			{
+				OnProgress(new ProgressEventArgs("Send error: " + ex.Message, 0, 0));
+			}
 		}
 	}
 }

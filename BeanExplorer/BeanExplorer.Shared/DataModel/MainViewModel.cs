@@ -14,18 +14,33 @@ namespace BeanExplorer.DataModel
 {
 	public class Device : INotifyPropertyChanged
 	{
+		private String serialMessage;
+
 		public String Id { get; set; }
 		public String Name { get; set; }
+
+		public String SerialMessage
+		{
+			get { return this.serialMessage; }
+			set
+			{
+				if (value == this.serialMessage)
+					return;
+				this.serialMessage = value;
+				OnPropertyChanged();
+			}
+		}
 
 		public Device(String id, String name)
 		{
 			Id = id;
 			Name = name;
+			SerialMessage = "Hello Bean!";
 		}
 
 		public event PropertyChangedEventHandler PropertyChanged;
 
-		protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
+		protected virtual void OnPropertyChanged([CallerMemberName] String propertyName = null)
 		{
 			PropertyChangedEventHandler handler = PropertyChanged;
 			if (handler != null) handler(this, new PropertyChangedEventArgs(propertyName));
@@ -40,7 +55,17 @@ namespace BeanExplorer.DataModel
 	    public ObservableCollection<String> Status { get; set; }
 	    public ObservableCollection<Device> Devices { get; set; }
 
-		public Device CurrentDevice { get { return currentDevice; } }
+	    public Device CurrentDevice
+	    {
+		    get { return currentDevice; }
+		    set
+		    {
+			    if (this.currentDevice == value)
+				    return;
+			    this.currentDevice = value;
+				OnPropertyChanged();
+		    }
+	    }
 
 		public event PropertyChangedEventHandler PropertyChanged;
 
@@ -63,6 +88,7 @@ namespace BeanExplorer.DataModel
 				Devices.Add(new Device("1", "Bean 1"));
 				Devices.Add(new Device("2", "Bean 2"));
 				Devices.Add(new Device("3", "Bean 3"));
+				currentDevice = new Device("1", "Bean 1");
 		    }
 		    else
 		    {
@@ -99,7 +125,7 @@ namespace BeanExplorer.DataModel
 		{
 			OnUiThread(() =>
 			{
-				Status.Insert(0, Encoding.UTF8.GetString(e.Data, 0, e.Data.Length));
+				Status.Insert(0, "RCV: " + Encoding.UTF8.GetString(e.Data, 0, e.Data.Length));
 				while (Status.Count > 50)
 					Status.RemoveAt(Status.Count - 1);
 			});
@@ -124,15 +150,14 @@ namespace BeanExplorer.DataModel
 
 	    public void DeviceSelected(Device device)
 	    {
-		    this.currentDevice = device;
+		    CurrentDevice = device;
 		    this.bean.Subscribe(device.Id);
 			OnPropertyChanged("CurrentDevice");
 		}
 
-	    public void Test()
+	    public void Send()
 	    {
-		    this.bean.Send(BeanMsgId.SerialData, Encoding.UTF8.GetBytes("I can send messages to my Bean!"));
-		    //this.bean.Send(BeanMsgId.SerialData, Encoding.UTF8.GetBytes("Listening..."));
+		    this.bean.Send(BeanMsgId.SerialData, Encoding.UTF8.GetBytes(currentDevice.SerialMessage));
 	    }
     }
 }
