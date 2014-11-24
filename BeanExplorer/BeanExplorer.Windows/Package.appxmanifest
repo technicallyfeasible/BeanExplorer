@@ -25,7 +25,7 @@
     <m2:DeviceCapability Name="bluetooth.genericAttributeProfile">
       <m2:Device Id="any">
         <m2:Function Type="serviceId:a495ff10-c5b1-4b44-b512-1370f02d74de" />
-        <m2:Function Type="serviceId:a495ff11-c5b1-4b44-b512-1370f02d74de" />
+        <m2:Function Type="serviceId:a495ff20-c5b1-4b44-b512-1370f02d74de" />
       </m2:Device>
     </m2:DeviceCapability>
   </Capabilities>

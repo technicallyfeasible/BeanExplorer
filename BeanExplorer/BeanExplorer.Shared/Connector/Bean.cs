@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
-using System.Text;
 using System.Threading.Tasks;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using Windows.Devices.Enumeration;
@@ -32,7 +31,8 @@ namespace BeanExplorer.Connector
 	public class Bean
 	{
 		private PnpObjectWatcher watcher;
-		private String currentDeviceId;
+		private String deviceContainerId;
+		private GattDeviceService currentService;
 		private GattCharacteristic currentCharacteristic;
 		private Byte[][] packets;
 		private Int32 msgCounter;
@@ -65,14 +65,14 @@ namespace BeanExplorer.Connector
 		public event ProgressEventHandler Progress;
 		protected virtual void OnProgress(ProgressEventArgs e)
 		{
-			ProgressEventHandler handler = this.Progress;
+			ProgressEventHandler handler = Progress;
 			if (handler != null) handler(this, e);
 		}
 
 		public event DataReceivedEventHandler DataReceived;
 		protected virtual void OnDataReceived(DataReceivedEventArgs e)
 		{
-			DataReceivedEventHandler handler = this.DataReceived;
+			DataReceivedEventHandler handler = DataReceived;
 			if (handler != null) handler(this, e);
 		}
 
@@ -106,10 +106,11 @@ namespace BeanExplorer.Connector
 		/// </summary>
 		private void StartDeviceConnectionWatcher()
 		{
-			watcher = PnpObject.CreateWatcher(PnpObjectType.DeviceContainer, new string[] { "System.Devices.Connected" }, String.Empty);
+			watcher = PnpObject.CreateWatcher(PnpObjectType.DeviceContainer, new[] { "System.Devices.Connected" }, String.Empty);
 			watcher.Updated += DeviceConnectionUpdated;
 			watcher.Start();
 		}
+
 
 		/// <summary>
 		/// Invoked when a connection is established to the Bluetooth device
@@ -118,13 +119,13 @@ namespace BeanExplorer.Connector
 		/// <param name="args">The updated device object properties</param>
 		private async void DeviceConnectionUpdated(PnpObjectWatcher sender, PnpObjectUpdate args)
 		{
-			if (currentDeviceId != args.Id)
+			if (this.deviceContainerId != args.Id)
 				return;
 
 			var connectedProperty = args.Properties["System.Devices.Connected"];
 			OnProgress(new ProgressEventArgs("Connection state changed to " + connectedProperty, 0, 0));
 
-			bool isConnected;
+			/*bool isConnected;
 			if (Boolean.TryParse(connectedProperty.ToString(), out isConnected) && isConnected)
 			{
 				var status = await currentCharacteristic.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
@@ -135,7 +136,7 @@ namespace BeanExplorer.Connector
 					watcher.Stop();
 					watcher = null;
 				}
-			}
+			}*/
 		}
 
 
@@ -146,13 +147,14 @@ namespace BeanExplorer.Connector
 			try
 			{
 				OnProgress(new ProgressEventArgs("Subscribing to " + deviceId, 0, 0));
-				GattDeviceService service = await GattDeviceService.FromIdAsync(deviceId);
-				if (service == null)
+				currentService = await GattDeviceService.FromIdAsync(deviceId);
+				if (currentService == null)
 				{
 					OnProgress(new ProgressEventArgs("Serial service not found", 0, 0));
 					return;
 				}
-				IReadOnlyList<GattCharacteristic> chars = service.GetCharacteristics(BeanConstants.BeanSerialCharUuid);
+
+				IReadOnlyList<GattCharacteristic> chars = currentService.GetCharacteristics(BeanConstants.BeanSerialCharUuid);
 				// check characteristic, windows cuts off everything after the \0 so we allow "B" as well
 				if (chars.Count == 0 || (chars[0].UserDescription != "B\0e\0a\0n\0 \0T\0r\0a\0n\0s\0p\0o\0r\0t" && chars[0].UserDescription != "B"))
 				{
@@ -168,15 +170,18 @@ namespace BeanExplorer.Connector
 					return;
 				}
 
-				currentDeviceId = deviceId;
+				this.deviceContainerId = deviceId;
 				c.ValueChanged += OnValueChanged;
 				GattCommunicationStatus status = await c.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue.Notify);
 				if (status == GattCommunicationStatus.Unreachable)
 				{
 					// Register a PnpObjectWatcher to detect when a connection to the device is established,
 					// such that the application can retry device configuration.
-					StartDeviceConnectionWatcher();
+					//StartDeviceConnectionWatcher();
 				}
+				DeviceInformation di = await DeviceInformation.CreateFromIdAsync(deviceId, new[] { "System.Devices.ContainerId" });
+				deviceContainerId = "{" + di.Properties["System.Devices.ContainerId"] + "}";
+				StartDeviceConnectionWatcher();
 				currentCharacteristic = c;
 				OnProgress(new ProgressEventArgs("Subscribed successfully", 0, 0));
 			}
@@ -194,6 +199,10 @@ namespace BeanExplorer.Connector
 
 			currentCharacteristic.ValueChanged -= OnValueChanged;
 			currentCharacteristic = null;
+
+			if (currentService != null)
+				currentService.Dispose();
+			currentService = null;
 		}
 
 		private void OnValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
@@ -274,7 +283,7 @@ namespace BeanExplorer.Connector
 				Byte[] debug = new Byte[b.Length];
 				b.CopyTo(debug);
 
-				Int32 packages = (Int32) Math.Ceiling((Double) b.Length/18) - 1;
+				Int32 packages = (Int32) Math.Ceiling((Double) b.Length/19) - 1;
 
 				// loop until everything has been sent
 				DataWriter writer = new DataWriter();
@@ -282,7 +291,7 @@ namespace BeanExplorer.Connector
 				UInt32 offset = 0;
 				do
 				{
-					UInt32 size = Math.Min(18, b.Length - offset);
+					UInt32 size = Math.Min(19, b.Length - offset);
 					Byte header = (Byte) (flag | ((this.msgCounter & 0x03) << 5) | (packages & 0x1F));
 					writer.WriteByte(header);
 					writer.WriteBuffer(b, offset, size);
