@@ -102,5 +102,15 @@ namespace BeanExplorer
 	    {
 		    DefaultViewModel.Send();
 	    }
+
+		private void RequestTemperatureClick(object sender, RoutedEventArgs e)
+	    {
+			DefaultViewModel.RequestTemperature();
+	    }
+
+		private void RequestAccelerometerClick(object sender, RoutedEventArgs e)
+	    {
+			DefaultViewModel.RequestAccelerometer();
+	    }
     }
 }

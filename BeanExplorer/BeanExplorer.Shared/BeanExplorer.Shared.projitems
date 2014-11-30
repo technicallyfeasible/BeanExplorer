@@ -18,6 +18,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)Connector\Bean.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Connector\BeanConstants.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Connector\Crc16.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Connector\DataReceivedEventArgs.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Connector\ProgressEventArgs.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)DataModel\MainViewModel.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)DataModel\SampleDataSource.cs" />

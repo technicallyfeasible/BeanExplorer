@@ -95,8 +95,27 @@
 								<ColumnDefinition Width="*"/>
 								<ColumnDefinition Width="Auto"/>
 							</Grid.ColumnDefinitions>
+							<Grid.RowDefinitions>
+								<RowDefinition Height="Auto"/>
+								<RowDefinition Height="Auto"/>
+								<RowDefinition Height="Auto"/>
+							</Grid.RowDefinitions>
 							<TextBox Text="{Binding SerialMessage, Mode=TwoWay}" Grid.Column="0"/>
-							<Button Click="SendClick" Grid.Column="1">Send</Button>
+							<Button Click="SendClick" Grid.Column="1" Grid.Row="0" HorizontalAlignment="Right">Send</Button>
+
+							<TextBlock Text="{Binding Temperature}" Style="{StaticResource SubtitleTextBlockStyle}" Padding="5" Grid.Column="0" Grid.Row="1" />
+							<Button Click="RequestTemperatureClick" Grid.Column="1" Grid.Row="1" HorizontalAlignment="Right">Get temperature</Button>
+							<Grid Grid.Column="0" Grid.Row="2">
+								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="*"/>
+									<ColumnDefinition Width="*"/>
+									<ColumnDefinition Width="*"/>
+								</Grid.ColumnDefinitions>
+								<TextBlock Text="{Binding X}" Style="{StaticResource SubtitleTextBlockStyle}" Padding="5" Grid.Column="0"/>
+								<TextBlock Text="{Binding Y}" Style="{StaticResource SubtitleTextBlockStyle}" Padding="5" Grid.Column="1"/>
+								<TextBlock Text="{Binding Z}" Style="{StaticResource SubtitleTextBlockStyle}" Padding="5" Grid.Column="2"/>
+							</Grid>
+							<Button Click="RequestAccelerometerClick" Grid.Column="1" Grid.Row="2" HorizontalAlignment="Right">Get accelerometer</Button>
 						</Grid>
 					</Grid>
                 </DataTemplate>

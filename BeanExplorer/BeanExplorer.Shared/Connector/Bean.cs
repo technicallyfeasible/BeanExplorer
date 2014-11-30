@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
@@ -10,26 +9,12 @@ using Windows.Storage.Streams;
 
 namespace BeanExplorer.Connector
 {
-	public class DataReceivedEventArgs : EventArgs
-	{
-		public BeanMsgId MsgId { get; set; }
-		public Byte[] Data { get; set; }
-
-		public DataReceivedEventArgs(BeanMsgId msgId, Byte[] data)
-		{
-			MsgId = msgId;
-			Data = data;
-		}
-	}
-
-	public delegate void DataReceivedEventHandler(Object sender, DataReceivedEventArgs e);
-
-
 	/// <summary>
 	/// PunchThrough Bean communication class
 	/// </summary>
 	public class Bean
 	{
+		private Object recvLock = new Object();
 		private PnpObjectWatcher watcher;
 		private String deviceContainerId;
 		private GattDeviceService currentService;
@@ -217,46 +202,62 @@ namespace BeanExplorer.Connector
 			var start = ((data[0] & 0x80) != 0);	//Set to 1 for the first packet of each App Message, 0 for every other packet
 			var messageCount = (data[0] & 0x60);	//Increments and rolls over on each new GT Message (0, 1, 2, 3, 0, ...)
 			var packetCount = (data[0] & 0x1F);		//Represents the number of packets remaining in the GST message
+			List<Byte> finalData;
 
-			if (start)
-				this.packets = new Byte[packetCount + 1][];
-
-			// append buffer without header
-			this.packets[this.packets.Length - packetCount - 1] = data;
-
-			if (packetCount == 0)
+			lock (recvLock)
 			{
+				if (start)
+					this.packets = new Byte[packetCount + 1][];
+
+				// append buffer without header
+				this.packets[this.packets.Length - packetCount - 1] = data;
+
+				if (packetCount > 0)
+					return;
+
 				// merge packets
-				Int32 length = this.packets.Sum(p => p.Length - 1);
-				Byte[] finalData = new Byte[length];
-				Int32 index = 0;
+				finalData = new List<Byte>();
 				foreach (Byte[] packet in this.packets)
 				{
-					Array.Copy(packet, 1, finalData, index, packet.Length - 1);
-					index += packet.Length - 1;
+					for (Int32 i = 0; i < packet.Length - 1; i++)
+						finalData.Add(packet[i + 1]);
 				}
 				this.packets = null;
+			}
 
-				Int32 size = finalData[0];
+			Int32 size = finalData[0];
 
-				// check msg crc
-				UInt16 dataCrc = Crc16.ComputeChecksum(finalData, 0, finalData.Length - 2);
-				UInt16 msgCrc = (UInt16) (finalData[finalData.Length - 2] | (UInt16) (finalData[finalData.Length - 1] << 8));
-				if (dataCrc != msgCrc || size != finalData.Length - 4)
-				{
-					OnDataReceived(new DataReceivedEventArgs(BeanMsgId.Invalid, finalData));
-					return;
-				}
+			// check msg crc
+			UInt16 dataCrc = Crc16.ComputeChecksum(finalData.ToArray(), 0, finalData.Count - 2);
+			UInt16 msgCrc = (UInt16) (finalData[finalData.Count - 2] | (UInt16) (finalData[finalData.Count - 1] << 8));
+			if (dataCrc != msgCrc || size != finalData.Count - 4)
+			{
+				OnDataReceived(new InvalidDataReceivedEventArgs(finalData.ToArray()));
+				return;
+			}
 
-				Byte[] payload = new Byte[size - 2];
-				Array.Copy(finalData, 4, payload, 0, payload.Length);
-				BeanMsgId msgId = (BeanMsgId) BitConverter.ToInt16(finalData, 2);
+			Byte[] payload = new Byte[size - 2];
+			Array.Copy(finalData.ToArray(), 4, payload, 0, payload.Length);
+			BeanMsgId msgId = (BeanMsgId) (BitConverter.ToInt16(finalData.ToArray(), 2) & ~0x8000);
 
-				if (msgId == BeanMsgId.SerialData)
-					OnDataReceived(new DataReceivedEventArgs(msgId, payload));
+			if (msgId == BeanMsgId.SerialData)
+				OnDataReceived(new SerialDataReceivedEventArgs(payload));
+			else if (msgId == BeanMsgId.CcTempRead)
+				OnDataReceived(new TemperatureDataReceivedEventArgs(payload[0]));
+			else if (msgId == BeanMsgId.CcAccelRead)
+			{
+				var x = (Int16) ((payload[1] << 8) | payload[0]) * 0.00391;
+				var y = (Int16)((payload[3] << 8) | payload[2]) * 0.00391;
+				var z = (Int16)((payload[5] << 8) | payload[4]) * 0.00391;
+				OnDataReceived(new AccelerometerDataReceivedEventArgs(x, y, z));
 			}
 		}
 
+
+		private Byte[] GetBytes(UInt16 value)
+		{
+			return new[]{ (Byte) (value & 0xFF), (Byte) ((value >> 8) & 0xFF) };
+		}
 
 		/// <summary>
 		/// Send a packet to the device
@@ -265,53 +266,69 @@ namespace BeanExplorer.Connector
 		{
 			try
 			{
-				Int32 flag = 0x80;
-
-				// build message
+				// no data, make it quicker
+				List<Byte> package = new List<Byte>(6 + (data != null ? data.Length : 0));
+				if (data == null || data.Length == 0)
+				{
+					package.Add(2);
+					package.Add(0);
+					package.AddRange(GetBytes((UInt16)msgId));
+				}
+				else
+				{
+					package.Add((Byte)(data.Length + 2));
+					package.Add(0);
+					package.AddRange(GetBytes((UInt16)msgId));
+					package.AddRange(data);
+				}
+				UInt16 crc = Crc16.ComputeChecksum(package.ToArray());
+				package.AddRange(GetBytes(crc));
+				
+				// loop until everything has been sent
 				DataWriter msg = new DataWriter();
 				msg.ByteOrder = ByteOrder.LittleEndian;
-				msg.WriteByte((Byte) (data.Length + 2));
-				msg.WriteByte(0);
-				msg.WriteUInt16((UInt16) msgId);
-				msg.WriteBytes(data);
-				IBuffer b = msg.DetachBuffer();
-				UInt16 crc = Crc16.ComputeChecksum(b, 0, (Int32) b.Length);
-				msg.WriteBuffer(b);
-				msg.WriteUInt16(crc);
-				b = msg.DetachBuffer();
-
-				Byte[] debug = new Byte[b.Length];
-				b.CopyTo(debug);
-
-				Int32 packages = (Int32) Math.Ceiling((Double) b.Length/19) - 1;
-
-				// loop until everything has been sent
-				DataWriter writer = new DataWriter();
-				writer.ByteOrder = ByteOrder.LittleEndian;
-				UInt32 offset = 0;
+				Int32 flag = 0x80;
+				Int32 packages = (Int32)Math.Ceiling((Double)package.Count / 19) - 1;
+				Int32 offset = 0;
 				do
 				{
-					UInt32 size = Math.Min(19, b.Length - offset);
-					Byte header = (Byte) (flag | ((this.msgCounter & 0x03) << 5) | (packages & 0x1F));
-					writer.WriteByte(header);
-					writer.WriteBuffer(b, offset, size);
-					IBuffer package = writer.DetachBuffer();
-					debug = new Byte[package.Length];
-					package.CopyTo(debug);
-					GattCommunicationStatus result = await this.currentCharacteristic.WriteValueAsync(package, GattWriteOption.WriteWithoutResponse);
+					Byte header = (Byte)(flag | ((this.msgCounter & 0x03) << 5) | (packages & 0x1F));
+					Int32 size = Math.Min(package.Count - offset, 19);
+
+					// build message
+					msg.WriteByte(header);
+					for (Int32 i = 0; i < size; i++)
+						msg.WriteByte(package[offset + i]);
+					IBuffer b = msg.DetachBuffer();
+
+					Byte[] debug = new Byte[b.Length];
+					b.CopyTo(debug);
+
+					GattCommunicationStatus result = await this.currentCharacteristic.WriteValueAsync(b, GattWriteOption.WriteWithoutResponse);
 					if (result != GattCommunicationStatus.Success)
 						throw new Exception(result.ToString());
+
 					flag = 0;
 					packages--;
 					this.msgCounter++;
 					this.msgCounter &= 0x03;
 					offset += size;
-				} while (offset < b.Length);
+				} while (offset < package.Count);
 			}
 			catch (Exception ex)
 			{
 				OnProgress(new ProgressEventArgs("Send error: " + ex.Message, 0, 0));
 			}
+		}
+
+		public void RequestTemperature()
+		{
+			Send(BeanMsgId.CcTempRead, null);
+		}
+
+		public void RequestAccelerometer()
+		{
+			Send(BeanMsgId.CcAccelRead, null);
 		}
 	}
 }

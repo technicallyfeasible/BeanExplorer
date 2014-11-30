@@ -7,7 +7,7 @@ namespace BeanExplorer.Connector
 	public static class Crc16
 	{
 		private const ushort Polynomial = 0x1021;
-		private const ushort Initial = 0xffff;
+		public const ushort Initial = 0xffff;
 		private static readonly ushort[] Table = new ushort[256];
 
 		public static ushort ComputeChecksum(byte[] bytes)
